@@ -6,3 +6,5 @@
 *.mp3
 .idea
 .ipynb_checkpoints
+*.png
+simon_software
