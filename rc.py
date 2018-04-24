@@ -176,7 +176,7 @@ def load_talk_info(name):
 
 
 def load_all_talk_info():
-    return ODSReader(info_file).getSheet(u'extract_talks')[1:]
+    return ODSReader(info_file).getSheet('extract_talks')[1:]
 
 
 def load_qa_info(name):
@@ -186,9 +186,9 @@ def load_qa_info(name):
 
 
 def load_all_qa_info():
-    return ODSReader(info_file).getSheet(u'extract_qa')[1:]
+    return ODSReader(info_file).getSheet('extract_qa')[1:]
 
 
 def get_parameters():
-    return {x[0]: x[1] for x in ODSReader(info_file).getSheet(u'parameters')}
+    return {x[0]: x[1] for x in ODSReader(info_file).getSheet('parameters')}
 

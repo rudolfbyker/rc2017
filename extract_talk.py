@@ -7,7 +7,7 @@ import os
 parameters = rc.get_parameters()
 talk_name = sys.argv[1]
 
-print "Extracting talk {}".format(talk_name)
+print("Extracting talk {}".format(talk_name))
 
 t = rc.load_talk_info(talk_name)
 

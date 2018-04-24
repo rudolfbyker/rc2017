@@ -7,7 +7,7 @@ import os
 parameters = rc.get_parameters()
 qa_name = sys.argv[1]
 
-print "Extracting Q&A session {}".format(qa_name)
+print("Extracting Q&A session {}".format(qa_name))
 
 qa = rc.load_qa_info(qa_name)
 
