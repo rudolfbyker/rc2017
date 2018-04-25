@@ -117,15 +117,22 @@ def media_length(filename):
         raise RuntimeError('Is mediainfo installed? On linux, try: sudo apt install mediainfo')
 
 
-def extract_talk(start_vid, stop_vid, start_time_ms, stop_time_ms, output_filename, input_dir, output_dir):
-    input_files = [os.path.join(input_dir, "MVI_{:04d}.MP4".format(i)) for i in range(start_vid, stop_vid + 1)]
-    ffmpeg_ss = start_time_ms
-    ffmpeg_to = sum(media_length(f) for f in input_files[:-1]) + stop_time_ms
-    list_filename = os.path.join(output_dir, '{}.files'.format(output_filename))
-    with open(list_filename, 'w') as list_file:
+def extract_talk(name):
+    talk_info = load_talk_info(name)
+    parameters = get_parameters()
+
+    input_files = [os.path.join(talk_info['input_folder'], "MVI_{:04d}.MP4".format(i)) for i in range(
+        talk_info['start_video'],
+        talk_info['stop_video'] + 1
+    )]
+    ffmpeg_ss = talk_info['start_time_ms']
+    ffmpeg_to = sum(media_length(f) for f in input_files[:-1]) + talk_info['stop_time_ms']
+
+    camera_mux_filename = os.path.join(parameters['output_dir'], '{}_camera.mux'.format(name))
+    with open(camera_mux_filename, 'w') as list_file:
         list_file.write("\n".join("file '{}'".format(f) for f in input_files))
 
-    video_filename = os.path.join(output_dir, '{}.mp4'.format(output_filename))
+    video_filename = os.path.join(parameters['output_dir'], '{}.mp4'.format(name))
     subprocess.check_call([
         'ffmpeg',
         # global options:
@@ -133,7 +140,7 @@ def extract_talk(start_vid, stop_vid, start_time_ms, stop_time_ms, output_filena
         # input stream 0:
         '-safe', '0',  # allow absolute paths
         '-f', 'concat',
-        '-i', list_filename,
+        '-i', camera_mux_filename,
         # output options:
         '-ss', str(ffmpeg_ss / 1000.),
         '-to', str(ffmpeg_to / 1000.),
@@ -146,44 +153,31 @@ def extract_talk(start_vid, stop_vid, start_time_ms, stop_time_ms, output_filena
     ])
 
 
-def extract_qa(
-    output_filename,
-    output_dir,
-    cam1_input_folder,
-    cam2_input_folder,
-    sync_delay_ms,
-    cam1_start_video,
-    cam1_start_time_ms,
-    cam1_stop_video,
-    cam1_stop_time_ms,
-    cam2_start_video,
-    cam2_stop_video,
-    dry_run=False
-):
-    """
-    TODO:
-    - Work with N cameras.
-    - Tile them automatically?
-    - Instead of sync_delay_ms, take an array of times, one for each camera,
-      specifying what duration of black video to prepend to the video.
-    - Use input seeking instead of output seeking? But then how do we handle sync?
-    """
+def extract_qa(name, dry_run=False):
+    qa_info = load_qa_info(name)
+    parameters = get_parameters()
     
-    cam1_input_files = [os.path.join(cam1_input_folder, "MVI_{:04d}.MP4".format(i)) for i in range(cam1_start_video, cam1_stop_video + 1)]
-    cam2_input_files = [os.path.join(cam2_input_folder, "MVI_{:04d}.MP4".format(i)) for i in range(cam2_start_video, cam2_stop_video + 1)]
+    cam1_input_files = [os.path.join(
+        qa_info['cam1_input_folder'],
+        "MVI_{:04d}.MP4".format(i)
+    ) for i in range(qa_info['cam1_start_video'], qa_info['cam1_stop_video'] + 1)]
+    cam2_input_files = [os.path.join(
+        qa_info['cam2_input_folder'],
+        "MVI_{:04d}.MP4".format(i)
+    ) for i in range(qa_info['cam2_start_video'], qa_info['cam2_stop_video'] + 1)]
     
-    ffmpeg_ss = cam1_start_time_ms
-    ffmpeg_to = sum(media_length(f) for f in cam1_input_files[:-1]) + cam1_stop_time_ms
+    ffmpeg_ss = qa_info['cam1_start_time_ms']
+    ffmpeg_to = sum(media_length(f) for f in cam1_input_files[:-1]) + qa_info['cam1_stop_time_ms']
     
-    cam1_list_filename = os.path.join(output_dir, '{}.cam1.files'.format(output_filename))
+    cam1_list_filename = os.path.join(parameters['output_dir'], '{}_camera1.mux'.format(name))
     with open(cam1_list_filename, 'w') as list_file:
         list_file.write("\n".join("file '{}'".format(f) for f in cam1_input_files))
         
-    cam2_list_filename = os.path.join(output_dir, '{}.cam2.files'.format(output_filename))
+    cam2_list_filename = os.path.join(parameters['output_dir'], '{}_camera2.mux'.format(name))
     with open(cam2_list_filename, 'w') as list_file:
         list_file.write("\n".join("file '{}'".format(f) for f in cam2_input_files))
 
-    video_filename = os.path.join(output_dir, '{}.mp4'.format(output_filename))
+    video_filename = os.path.join(parameters['output_dir'], '{}.mp4'.format(name))
     
     ffmpeg_command = [
         'ffmpeg',
@@ -191,7 +185,7 @@ def extract_qa(
         '-y',  # overwrite
     ]
     
-    if sync_delay_ms > 0:
+    if qa_info['sync_delay_ms'] > 0:
         # cam1 starts first
         ffmpeg_command.extend([
             # input stream 0:
@@ -199,7 +193,7 @@ def extract_qa(
             '-f', 'concat',
             '-i', cam1_list_filename,
             # input stream 1:
-            '-itsoffset', str(sync_delay_ms / 1000.),
+            '-itsoffset', str(qa_info['sync_delay_ms'] / 1000.),
             '-safe', '0',  # allow absolute paths
             '-f', 'concat',
             '-i', cam2_list_filename,
@@ -212,11 +206,11 @@ def extract_qa(
                 '[0:a][1:a]amix[a]',
             ]),
         ])
-    elif sync_delay_ms < 0:
+    elif qa_info['sync_delay_ms'] < 0:
         # cam2 starts first
         ffmpeg_command.extend([
             # input stream 0:
-            '-itsoffset', str(-sync_delay_ms / 1000.),
+            '-itsoffset', str(-qa_info['sync_delay_ms'] / 1000.),
             '-safe', '0',  # allow absolute paths
             '-f', 'concat',
             '-i', cam1_list_filename,
@@ -275,25 +269,25 @@ def extract_qa(
 
     
 def load_talk_info(name):
-    for t in load_all_talk_info():
-        if t[0] == name:
-            return t
+    return load_all_talk_info()[name]
 
 
 @functools.lru_cache(maxsize=1, typed=False)
 def load_all_talk_info():
-    return ODSReader(info_file).getSheet('extract_talks')[1:]
+    sheet = ODSReader(info_file).getSheet('talks')
+    keys = sheet[0]
+    return {values[0]: dict(zip(keys, values)) for values in sheet[1:]}
 
 
 def load_qa_info(name):
-    for t in load_all_qa_info():
-        if t[0] == name:
-            return t
+    return load_all_qa_info()[name]
 
 
 @functools.lru_cache(maxsize=1, typed=False)
 def load_all_qa_info():
-    return ODSReader(info_file).getSheet('extract_qa')[1:]
+    sheet = ODSReader(info_file).getSheet('qa')
+    keys = sheet[0]
+    return {values[0]: dict(zip(keys, values)) for values in sheet[1:]}
 
 
 @functools.lru_cache(maxsize=1, typed=False)
