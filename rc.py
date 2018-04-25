@@ -1,8 +1,77 @@
 from ODSReader.ODSReader import ODSReader
 import subprocess
 import os
+import functools
+from datetime import datetime, timedelta
 
 info_file = 'rc2017.ods'
+
+
+def make_slide_video(name):
+    parameters = get_parameters()
+
+    slides = read_slide_timings(name)
+    slide_mux_filename = os.path.join(parameters['output_folder'], '{}_slides.mux'.format(name))
+    write_slide_timings_mux_file(slides, slide_mux_filename)
+
+    slide_video_filename = os.path.join(parameters['output_folder'], '{}_slides.mp4'.format(name))
+    subprocess.check_call([
+        'ffmpeg',
+        # global options:
+        '-y',  # overwrite
+        # input stream 0:
+        '-safe', '0',  # allow absolute paths
+        '-f', 'concat',
+        '-i', slide_mux_filename,
+        # output options:
+        '-an',  # no audio
+        '-c:v', 'libx264',
+        slide_video_filename
+    ])  # TODO: scale??
+
+
+def read_slide_timings(name):
+    parameters = get_parameters()
+    slide_timings_file = os.path.join(parameters['rc_base_folder'], 'timing', name, 'slide_timings--{}.txt'.format(name))
+    slides = []
+    with open(slide_timings_file, 'r') as f:
+        for line in f:
+            slide_time, slide_filename = line.strip().split('->')
+            ref_time = datetime.strptime('0:00:00', '%H:%M:%S')
+            slides.append({
+                'time': datetime.strptime(slide_time, '%H:%M:%S') - ref_time,
+                'filename': os.path.join(parameters['rc_base_folder'], 'slides', name, slide_filename)
+            })
+
+    # If there are duplicate times, keep only the last one
+    slides = [slides[i] for i in range(len(slides)) if i == len(slides) - 1 or slides[i]['time'] != slides[i + 1]['time']]
+
+    # If there are duplicate filenames, keep only the first one
+    slides = [slides[i] for i in range(len(slides)) if i == 0 or slides[i]['filename'] != slides[i - 1]['filename']]
+
+    return slides
+
+
+def write_slide_timings_mux_file(slide_timings, output_filename):
+    """
+    Prepare a file for the ffmpeg concat demuxer
+    See https://trac.ffmpeg.org/wiki/Slideshow
+
+    :param slide_timings:
+
+    :param output_filename:
+
+    :return:
+
+    """
+    with open(output_filename, 'w') as f:
+        previous_time = timedelta()
+        for slide in slide_timings:
+            f.write("file '{}'\n".format(slide['filename']))
+            f.write("duration {}\n".format(slide['time'] - previous_time))
+            previous_time = slide['time']
+        # Due to an issue in ffmpeg, we have to repeat the last filename
+        f.write("file '{}'\n".format(slide_timings[-1]['filename']))
 
 
 def media_length(filename):
@@ -189,6 +258,7 @@ def load_all_qa_info():
     return ODSReader(info_file).getSheet('extract_qa')[1:]
 
 
+@functools.lru_cache(maxsize=1, typed=False)
 def get_parameters():
     return {x[0]: x[1] for x in ODSReader(info_file).getSheet('parameters')}
 
