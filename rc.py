@@ -30,6 +30,32 @@ def make_slide_video(name):
     ])  # TODO: scale??
 
 
+def read_stream_timings(name):
+    stream_map = {
+        1: 'camera',
+        2: 'slides',
+    }
+    parameters = get_parameters()
+    stream_timings_file = os.path.join(parameters['rc_base_folder'], 'timing', name, 'streams_timings--{}.txt'.format(name))
+    streams = []
+    with open(stream_timings_file, 'r') as f:
+        for line in f:
+            stream_time, stream_number = line.strip().split('->')
+            ref_time = datetime.strptime('0:00:00', '%H:%M:%S')
+            streams.append({
+                'time': datetime.strptime(stream_time, '%H:%M:%S') - ref_time,
+                'name': stream_map[int(stream_number)],
+            })
+
+    # If there are duplicate times, keep only the last one
+    streams = [streams[i] for i in range(len(streams)) if i == len(streams) - 1 or streams[i]['time'] != streams[i + 1]['time']]
+
+    # If there are duplicate stream names, keep only the first one
+    streams = [streams[i] for i in range(len(streams)) if i == 0 or streams[i]['name'] != streams[i - 1]['name']]
+
+    return streams
+
+
 def read_slide_timings(name):
     parameters = get_parameters()
     slide_timings_file = os.path.join(parameters['rc_base_folder'], 'timing', name, 'slide_timings--{}.txt'.format(name))
@@ -50,6 +76,16 @@ def read_slide_timings(name):
     slides = [slides[i] for i in range(len(slides)) if i == 0 or slides[i]['filename'] != slides[i - 1]['filename']]
 
     return slides
+
+
+def write_stream_timings_cmd_file(stream_timings, output_filename):
+    stream_map = {
+        'slides': 0,
+        'camera': 1,
+    }
+    with open(output_filename, 'w') as f:
+        for stream in stream_timings:
+            f.write("{} streamselect map {}\n".format(stream['time'], stream_map[stream['name']]))
 
 
 def write_slide_timings_mux_file(slide_timings, output_filename):
@@ -93,9 +129,9 @@ def extract_talk(start_vid, stop_vid, start_time_ms, stop_time_ms, output_filena
     subprocess.check_call([
         'ffmpeg',
         # global options:
-        '-y', # overwrite
+        '-y',  # overwrite
         # input stream 0:
-        '-safe', '0', # allow absolute paths
+        '-safe', '0',  # allow absolute paths
         '-f', 'concat',
         '-i', list_filename,
         # output options:
@@ -152,26 +188,26 @@ def extract_qa(
     ffmpeg_command = [
         'ffmpeg',
         # global options:
-        '-y', # overwrite
+        '-y',  # overwrite
     ]
     
     if sync_delay_ms > 0:
         # cam1 starts first
         ffmpeg_command.extend([
             # input stream 0:
-            '-safe', '0', # allow absolute paths
+            '-safe', '0',  # allow absolute paths
             '-f', 'concat',
             '-i', cam1_list_filename,
             # input stream 1:
             '-itsoffset', str(sync_delay_ms / 1000.),
-            '-safe', '0', # allow absolute paths
+            '-safe', '0',  # allow absolute paths
             '-f', 'concat',
             '-i', cam2_list_filename,
             # processing:
             '-filter_complex',
             ';'.join([
-                '[0:v]pad=iw*2:ih[padded]', # pad cam1, put it on the left
-                '[padded][1:v]overlay=W/2:0[sidebyside]', # overlay cam2 on the right
+                '[0:v]pad=iw*2:ih[padded]',  # pad cam1, put it on the left
+                '[padded][1:v]overlay=W/2:0[sidebyside]',  # overlay cam2 on the right
                 '[sidebyside]scale=-2:480[v]',
                 '[0:a][1:a]amix[a]',
             ]),
@@ -181,18 +217,18 @@ def extract_qa(
         ffmpeg_command.extend([
             # input stream 0:
             '-itsoffset', str(-sync_delay_ms / 1000.),
-            '-safe', '0', # allow absolute paths
+            '-safe', '0',  # allow absolute paths
             '-f', 'concat',
             '-i', cam1_list_filename,
             # input stream 1:
-            '-safe', '0', # allow absolute paths
+            '-safe', '0',  # allow absolute paths
             '-f', 'concat',
             '-i', cam2_list_filename,
             # processing:
             '-filter_complex',
             ';'.join([
-                '[1:v]pad=iw*2:ih:iw:0[padded]', # pad cam2, put it on the right
-                '[padded][0:v]overlay=0:0[sidebyside]', # overlay cam1 on the left
+                '[1:v]pad=iw*2:ih:iw:0[padded]',  # pad cam2, put it on the right
+                '[padded][0:v]overlay=0:0[sidebyside]',  # overlay cam1 on the left
                 '[sidebyside]scale=-2:480[v]',
                 '[0:a][1:a]amix[a]',
             ]),
@@ -201,18 +237,18 @@ def extract_qa(
         # cam1 and cam2 are already synchronised
         ffmpeg_command.extend([
             # input stream 0:
-            '-safe', '0', # allow absolute paths
+            '-safe', '0',  # allow absolute paths
             '-f', 'concat',
             '-i', cam1_list_filename,
             # input stream 1:
-            '-safe', '0', # allow absolute paths
+            '-safe', '0',  # allow absolute paths
             '-f', 'concat',
             '-i', cam2_list_filename,
             # processing:
             '-filter_complex',
             ';'.join([
-                '[0:v]pad=iw*2:ih[padded]', # pad cam1, put it on the left
-                '[padded][1:v]overlay=W/2:0[sidebyside]', # overlay cam2 on the right
+                '[0:v]pad=iw*2:ih[padded]',  # pad cam1, put it on the left
+                '[padded][1:v]overlay=W/2:0[sidebyside]',  # overlay cam2 on the right
                 '[sidebyside]scale=-2:480[v]',
                 '[0:a][1:a]amix[a]',
             ]),
@@ -244,6 +280,7 @@ def load_talk_info(name):
             return t
 
 
+@functools.lru_cache(maxsize=1, typed=False)
 def load_all_talk_info():
     return ODSReader(info_file).getSheet('extract_talks')[1:]
 
@@ -254,6 +291,7 @@ def load_qa_info(name):
             return t
 
 
+@functools.lru_cache(maxsize=1, typed=False)
 def load_all_qa_info():
     return ODSReader(info_file).getSheet('extract_qa')[1:]
 
@@ -261,4 +299,3 @@ def load_all_qa_info():
 @functools.lru_cache(maxsize=1, typed=False)
 def get_parameters():
     return {x[0]: x[1] for x in ODSReader(info_file).getSheet('parameters')}
-
