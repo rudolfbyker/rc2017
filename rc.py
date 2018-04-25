@@ -7,6 +7,50 @@ from datetime import datetime, timedelta
 info_file = 'rc2017.ods'
 
 
+def make_talk_video(name):
+    parameters = get_parameters()
+
+    streamselect_filename = os.path.join(parameters['output_folder'], '{}_streamselect.cmd'.format(name))
+    slide_mux_filename = os.path.join(parameters['output_folder'], '{}_slides.mux'.format(name))
+    final_video_filename = os.path.join(parameters['output_folder'], '{}.mp4'.format(name))
+    camera_mux_filename = os.path.join(parameters['output_folder'], '{}_camera.mux'.format(name))
+
+    write_slide_timings_mux_file(read_slide_timings(name), slide_mux_filename)
+    write_stream_timings_cmd_file(read_stream_timings(name), streamselect_filename)
+    ss, to = write_camera_mux_file_for_talk(name, camera_mux_filename)
+
+    w = parameters['source_w']
+    h = parameters['source_h']
+    filters = [
+        "[0]scale=w=-1:h={},pad=w={}:h={}:x=(out_w-in_w)/2[slides]".format(h, w, h),  # This assumes that video is wider than slides
+        "[1]null[camera]",
+        "[slides][camera]streamselect=inputs=2:map=0,sendcmd=f={},setdar[v]".format(streamselect_filename),
+        "[1:a]anull[a]",  # Use audio from camera for now (TODO: use processed audio from DAW)
+    ]
+
+    subprocess.check_call([
+        'ffmpeg',
+        # global options:
+        '-y',  # overwrite
+        # input stream 0 (slides)
+        '-safe', '0',  # allow absolute paths
+        '-f', 'concat',
+        '-i', slide_mux_filename,
+        # input stream 1 (camera)
+        '-safe', '0',  # allow absolute paths
+        '-f', 'concat',
+        '-ss', str(ss / 1000.),
+        '-i', camera_mux_filename,
+        # output options:
+        '-t', str(to - ss),
+        '-filter_complex', ";".join(filters),
+        '-c:v', 'libx264',  # TODO: set CRF (video quality)
+        '-map', '[v]',
+        '-map', '[a]',
+        final_video_filename
+    ])
+
+
 def make_slide_video(name):
     parameters = get_parameters()
 
@@ -85,7 +129,7 @@ def write_stream_timings_cmd_file(stream_timings, output_filename):
     }
     with open(output_filename, 'w') as f:
         for stream in stream_timings:
-            f.write("{} streamselect map {}\n".format(stream['time'], stream_map[stream['name']]))
+            f.write("{} streamselect map {};\n".format(stream['time'], stream_map[stream['name']]))
 
 
 def write_slide_timings_mux_file(slide_timings, output_filename):
@@ -119,33 +163,45 @@ def media_length(filename):
 
 def write_camera_mux_file_for_talk(name, output_filename):
     talk_info = load_talk_info(name)
-    input_files = [os.path.join(talk_info['input_folder'], "MVI_{:04d}.MP4".format(i)) for i in range(
-        talk_info['start_video'],
-        talk_info['stop_video'] + 1
+    parameters = get_parameters()
+
+    input_files = [os.path.join(parameters['rc_base_folder'], talk_info['input_folder'], "MVI_{:04d}.MP4".format(i)) for i in range(
+        int(talk_info['start_video']),
+        int(talk_info['stop_video']) + 1
     )]
-    ffmpeg_ss = talk_info['start_time_ms']
-    ffmpeg_to = sum(media_length(f) for f in input_files[:-1]) + talk_info['stop_time_ms']
-    with open(output_filename, 'w') as list_file:
-        list_file.write("\n".join("file '{}'".format(f) for f in input_files))
+    ffmpeg_ss = float(talk_info['start_time_ms'])
+    ffmpeg_to = sum(media_length(f) for f in input_files[:-1]) + float(talk_info['stop_time_ms'])
+    with open(output_filename, 'w') as mux_file:
+        mux_file.write("\n".join("file '{}'".format(f) for f in input_files))
     return ffmpeg_ss, ffmpeg_to
 
 
 def write_camera_mux_files_for_qa(name, cam1_mux_filename, cam2_mux_filename):
     qa_info = load_qa_info(name)
+    parameters = get_parameters()
+
     cam1_input_files = [os.path.join(
+        parameters['rc_base_folder'],
         qa_info['cam1_input_folder'],
         "MVI_{:04d}.MP4".format(i)
-    ) for i in range(qa_info['cam1_start_video'], qa_info['cam1_stop_video'] + 1)]
+    ) for i in range(
+        int(qa_info['cam1_start_video']),
+        int(qa_info['cam1_stop_video']) + 1
+    )]
     cam2_input_files = [os.path.join(
+        parameters['rc_base_folder'],
         qa_info['cam2_input_folder'],
         "MVI_{:04d}.MP4".format(i)
-    ) for i in range(qa_info['cam2_start_video'], qa_info['cam2_stop_video'] + 1)]
-    ffmpeg_ss = qa_info['cam1_start_time_ms']
-    ffmpeg_to = sum(media_length(f) for f in cam1_input_files[:-1]) + qa_info['cam1_stop_time_ms']
-    with open(cam1_mux_filename, 'w') as list_file:
-        list_file.write("\n".join("file '{}'".format(f) for f in cam1_input_files))
-    with open(cam2_mux_filename, 'w') as list_file:
-        list_file.write("\n".join("file '{}'".format(f) for f in cam2_input_files))
+    ) for i in range(
+        int(qa_info['cam2_start_video']),
+        int(qa_info['cam2_stop_video']) + 1
+    )]
+    ffmpeg_ss = float(qa_info['cam1_start_time_ms'])
+    ffmpeg_to = sum(media_length(f) for f in cam1_input_files[:-1]) + float(qa_info['cam1_stop_time_ms'])
+    with open(cam1_mux_filename, 'w') as mux_file:
+        mux_file.write("\n".join("file '{}'".format(f) for f in cam1_input_files))
+    with open(cam2_mux_filename, 'w') as mux_file:
+        mux_file.write("\n".join("file '{}'".format(f) for f in cam2_input_files))
     return ffmpeg_ss, ffmpeg_to
 
 
