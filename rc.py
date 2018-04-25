@@ -117,21 +117,42 @@ def media_length(filename):
         raise RuntimeError('Is mediainfo installed? On linux, try: sudo apt install mediainfo')
 
 
-def extract_talk(name):
+def write_camera_mux_file_for_talk(name, output_filename):
     talk_info = load_talk_info(name)
-    parameters = get_parameters()
-
     input_files = [os.path.join(talk_info['input_folder'], "MVI_{:04d}.MP4".format(i)) for i in range(
         talk_info['start_video'],
         talk_info['stop_video'] + 1
     )]
     ffmpeg_ss = talk_info['start_time_ms']
     ffmpeg_to = sum(media_length(f) for f in input_files[:-1]) + talk_info['stop_time_ms']
-
-    camera_mux_filename = os.path.join(parameters['output_dir'], '{}_camera.mux'.format(name))
-    with open(camera_mux_filename, 'w') as list_file:
+    with open(output_filename, 'w') as list_file:
         list_file.write("\n".join("file '{}'".format(f) for f in input_files))
+    return ffmpeg_ss, ffmpeg_to
 
+
+def write_camera_mux_files_for_qa(name, cam1_mux_filename, cam2_mux_filename):
+    qa_info = load_qa_info(name)
+    cam1_input_files = [os.path.join(
+        qa_info['cam1_input_folder'],
+        "MVI_{:04d}.MP4".format(i)
+    ) for i in range(qa_info['cam1_start_video'], qa_info['cam1_stop_video'] + 1)]
+    cam2_input_files = [os.path.join(
+        qa_info['cam2_input_folder'],
+        "MVI_{:04d}.MP4".format(i)
+    ) for i in range(qa_info['cam2_start_video'], qa_info['cam2_stop_video'] + 1)]
+    ffmpeg_ss = qa_info['cam1_start_time_ms']
+    ffmpeg_to = sum(media_length(f) for f in cam1_input_files[:-1]) + qa_info['cam1_stop_time_ms']
+    with open(cam1_mux_filename, 'w') as list_file:
+        list_file.write("\n".join("file '{}'".format(f) for f in cam1_input_files))
+    with open(cam2_mux_filename, 'w') as list_file:
+        list_file.write("\n".join("file '{}'".format(f) for f in cam2_input_files))
+    return ffmpeg_ss, ffmpeg_to
+
+
+def extract_talk(name):
+    parameters = get_parameters()
+    camera_mux_filename = os.path.join(parameters['output_dir'], '{}_camera.mux'.format(name))
+    ffmpeg_ss, ffmpeg_to = write_camera_mux_file_for_talk(name, camera_mux_filename)
     video_filename = os.path.join(parameters['output_dir'], '{}.mp4'.format(name))
     subprocess.check_call([
         'ffmpeg',
@@ -154,49 +175,31 @@ def extract_talk(name):
 
 
 def extract_qa(name, dry_run=False):
-    qa_info = load_qa_info(name)
     parameters = get_parameters()
-    
-    cam1_input_files = [os.path.join(
-        qa_info['cam1_input_folder'],
-        "MVI_{:04d}.MP4".format(i)
-    ) for i in range(qa_info['cam1_start_video'], qa_info['cam1_stop_video'] + 1)]
-    cam2_input_files = [os.path.join(
-        qa_info['cam2_input_folder'],
-        "MVI_{:04d}.MP4".format(i)
-    ) for i in range(qa_info['cam2_start_video'], qa_info['cam2_stop_video'] + 1)]
-    
-    ffmpeg_ss = qa_info['cam1_start_time_ms']
-    ffmpeg_to = sum(media_length(f) for f in cam1_input_files[:-1]) + qa_info['cam1_stop_time_ms']
-    
-    cam1_list_filename = os.path.join(parameters['output_dir'], '{}_camera1.mux'.format(name))
-    with open(cam1_list_filename, 'w') as list_file:
-        list_file.write("\n".join("file '{}'".format(f) for f in cam1_input_files))
-        
-    cam2_list_filename = os.path.join(parameters['output_dir'], '{}_camera2.mux'.format(name))
-    with open(cam2_list_filename, 'w') as list_file:
-        list_file.write("\n".join("file '{}'".format(f) for f in cam2_input_files))
+    qa_info = load_qa_info(name)
 
+    cam1_mux_filename = os.path.join(parameters['output_dir'], '{}_camera1.mux'.format(name))
+    cam2_mux_filename = os.path.join(parameters['output_dir'], '{}_camera2.mux'.format(name))
+    ffmpeg_ss, ffmpeg_to = write_camera_mux_files_for_qa(name, cam1_mux_filename, cam2_mux_filename)
     video_filename = os.path.join(parameters['output_dir'], '{}.mp4'.format(name))
-    
     ffmpeg_command = [
         'ffmpeg',
         # global options:
         '-y',  # overwrite
     ]
-    
+
     if qa_info['sync_delay_ms'] > 0:
         # cam1 starts first
         ffmpeg_command.extend([
             # input stream 0:
             '-safe', '0',  # allow absolute paths
             '-f', 'concat',
-            '-i', cam1_list_filename,
+            '-i', cam1_mux_filename,
             # input stream 1:
             '-itsoffset', str(qa_info['sync_delay_ms'] / 1000.),
             '-safe', '0',  # allow absolute paths
             '-f', 'concat',
-            '-i', cam2_list_filename,
+            '-i', cam2_mux_filename,
             # processing:
             '-filter_complex',
             ';'.join([
@@ -213,11 +216,11 @@ def extract_qa(name, dry_run=False):
             '-itsoffset', str(-qa_info['sync_delay_ms'] / 1000.),
             '-safe', '0',  # allow absolute paths
             '-f', 'concat',
-            '-i', cam1_list_filename,
+            '-i', cam1_mux_filename,
             # input stream 1:
             '-safe', '0',  # allow absolute paths
             '-f', 'concat',
-            '-i', cam2_list_filename,
+            '-i', cam2_mux_filename,
             # processing:
             '-filter_complex',
             ';'.join([
@@ -233,11 +236,11 @@ def extract_qa(name, dry_run=False):
             # input stream 0:
             '-safe', '0',  # allow absolute paths
             '-f', 'concat',
-            '-i', cam1_list_filename,
+            '-i', cam1_mux_filename,
             # input stream 1:
             '-safe', '0',  # allow absolute paths
             '-f', 'concat',
-            '-i', cam2_list_filename,
+            '-i', cam2_mux_filename,
             # processing:
             '-filter_complex',
             ';'.join([
@@ -247,7 +250,7 @@ def extract_qa(name, dry_run=False):
                 '[0:a][1:a]amix[a]',
             ]),
         ])
-    
+
     ffmpeg_command.extend([
         # output options:
         '-map', '[v]',
@@ -261,13 +264,13 @@ def extract_qa(name, dry_run=False):
         '-async', '1',
         video_filename
     ])
-    
+
     if dry_run:
         return subprocess.list2cmdline(ffmpeg_command)
     else:
         return subprocess.check_call(ffmpeg_command)
 
-    
+
 def load_talk_info(name):
     return load_all_talk_info()[name]
 
