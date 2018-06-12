@@ -66,6 +66,15 @@ def make_slide_video(name):
     """
     parameters = get_parameters()
 
+    # For convenience, match the size and frame rate of the camera:
+    w = parameters['source_w']
+    h = parameters['source_h']
+    fps = parameters['source_fps']
+
+    filters = [
+        "[0]scale=w=-1:h={},pad=w={}:h={}:x=(out_w-in_w)/2,fps=fps={}[v]".format(h, w, h, fps),  # This assumes that video is wider than slides
+    ]
+
     slides = read_slide_timings(name)
     slide_mux_filename = os.path.join(parameters['output_folder'], '{}_slides.mux'.format(name))
     write_slide_timings_mux_file(slides, slide_mux_filename)
@@ -80,10 +89,12 @@ def make_slide_video(name):
         '-f', 'concat',
         '-i', slide_mux_filename,
         # output options:
+        '-filter_complex', ";".join(filters),
+        '-c:v', 'libx264',  # TODO: set CRF (video quality)
         '-an',  # no audio
-        '-c:v', 'libx264',
+        '-map', '[v]',
         slide_video_filename
-    ])  # TODO: scale??
+    ])
 
 
 def read_stream_timings(name):
