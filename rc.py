@@ -8,6 +8,12 @@ info_file = 'rc2017.ods'
 
 
 def make_talk_video(name):
+    """
+    Make a video for the talk using the previously created slides mux file and streamselect command file.
+
+    :param name: The name of the talk as it appears in the spreadsheet.
+
+    """
     parameters = get_parameters()
 
     streamselect_filename = os.path.join(parameters['output_folder'], '{}_streamselect.cmd'.format(name))
@@ -52,6 +58,12 @@ def make_talk_video(name):
 
 
 def make_slide_video(name):
+    """
+    Use the previously created slides mux file to create a video with only the slides.
+
+    :param name: The name of the talk as it appears in the spreadsheet.
+
+    """
     parameters = get_parameters()
 
     slides = read_slide_timings(name)
@@ -75,6 +87,15 @@ def make_slide_video(name):
 
 
 def read_stream_timings(name):
+    """
+    Interpret the output of Simon's stream timing program.
+
+    :param name: The name of the text file where the stream timings are stored.
+
+    :return: A list of dictionaries with the interpreted and cleaned data.
+
+    """
+
     stream_map = {
         1: 'camera',
         2: 'slides',
@@ -101,6 +122,14 @@ def read_stream_timings(name):
 
 
 def read_slide_timings(name):
+    """
+    Interpret the output of Simon's slide timing program.
+
+    :param name: The name of the text file where the slide timings are stored.
+
+    :return: A list of dictionaries with the interpreted and cleaned data.
+
+    """
     parameters = get_parameters()
     slide_timings_file = os.path.join(parameters['rc_base_folder'], 'timing', name, 'slide_timings--{}.txt'.format(name))
     slides = []
@@ -123,6 +152,15 @@ def read_slide_timings(name):
 
 
 def write_stream_timings_cmd_file(stream_timings, output_filename):
+    """
+    Prepare a commmand file for the ffmpeg filter_complex.
+    This is used to select which stream is shown at which time in the output video.
+
+    :param stream_timings: A list of dictionaries, saying which stream should be shown at what time.
+
+    :param output_filename: The name of the output file.
+
+    """
     stream_map = {
         'slides': 0,
         'camera': 1,
@@ -134,14 +172,14 @@ def write_stream_timings_cmd_file(stream_timings, output_filename):
 
 def write_slide_timings_mux_file(slide_timings, output_filename):
     """
-    Prepare a file for the ffmpeg concat demuxer
+    Prepare a file for the ffmpeg concat demuxer.
+    This file may be used as an input to ffmpeg to provide the slides for a talk.
+
     See https://trac.ffmpeg.org/wiki/Slideshow
 
-    :param slide_timings:
+    :param slide_timings: A list of dictionaries saying which filename should be shown at what time.
 
-    :param output_filename:
-
-    :return:
+    :param output_filename: The name of the output file.
 
     """
     with open(output_filename, 'w') as f:
@@ -155,6 +193,14 @@ def write_slide_timings_mux_file(slide_timings, output_filename):
 
 
 def media_length(filename):
+    """
+    Get the duration of a video or audio file.
+
+    :param filename: The video or audio file to analyse
+
+    :return: The duration, as an integer number of seconds.
+
+    """
     try:
         return int(subprocess.check_output(['mediainfo', '--Inform=General;%Duration%', filename]))
     except:
@@ -162,6 +208,17 @@ def media_length(filename):
 
 
 def write_camera_mux_file_for_talk(name, output_filename):
+    """
+    Write mux files which tell ffmpeg to concatenate the source video files for the cameras used during talks.
+
+    :param name: The name of the talk as it appears in the spreadsheet.
+
+    :param output_filename: The name of the output file
+
+    :return: The values of the -ss and -to parameters that should be passed to ffmpeg when the created mux file is used
+        as an input.
+
+    """
     talk_info = load_talk_info(name)
     parameters = get_parameters()
 
@@ -177,6 +234,20 @@ def write_camera_mux_file_for_talk(name, output_filename):
 
 
 def write_camera_mux_files_for_qa(name, cam1_mux_filename, cam2_mux_filename):
+    """
+    Write mux files which tell ffmpeg to concatenate the source video files for the two cameras used during Q&A
+    sessions.
+
+    :param name: The name of the q&a session as it appears in the spreadsheet.
+
+    :param cam1_mux_filename: The name of the output file for camera 1
+
+    :param cam2_mux_filename: The name of the output file for camera 2
+
+    :return: The values of the -ss and -to parameters that should be passed to ffmpeg when these mux files are used as
+        inputs.
+
+    """
     qa_info = load_qa_info(name)
     parameters = get_parameters()
 
@@ -206,6 +277,13 @@ def write_camera_mux_files_for_qa(name, cam1_mux_filename, cam2_mux_filename):
 
 
 def extract_talk(name):
+    """
+    Make a 480p split-screen video of the camera and a black canvas (over which slides will be shown)
+    This is used for gathering timing information.
+
+    :param name: The name of the talk as it appears in the spreadsheet.
+
+    """
     parameters = get_parameters()
     camera_mux_filename = os.path.join(parameters['output_dir'], '{}_camera.mux'.format(name))
     ffmpeg_ss, ffmpeg_to = write_camera_mux_file_for_talk(name, camera_mux_filename)
@@ -231,6 +309,17 @@ def extract_talk(name):
 
 
 def extract_qa(name, dry_run=False):
+    """
+    Make a 480p split-screen video of the two cameras used during Q&A.
+    This is used for gathering timing information.
+
+    :param name: The name of the q&a session as it appears in the spreadsheet.
+
+    :param dry_run: Whether to actually create the video, or to just return the ffmpeg command that would be used.
+
+    :return: The result of check_call or the command that would be called.
+
+    """
     parameters = get_parameters()
     qa_info = load_qa_info(name)
 
