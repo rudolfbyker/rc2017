@@ -6,8 +6,13 @@ from datetime import datetime, timedelta
 
 info_file = 'rc2017.ods'
 
+crf_worst = 51
+crf_default = 23
+crf_visually_lossless = 18
+crf_lossless = 0
 
-def make_talk_video(name):
+
+def make_talk_video(name, crf=crf_visually_lossless, preset='slow'):
     """
     Make a video for the talk using the previously created slides mux file and streamselect command file.
 
@@ -50,14 +55,16 @@ def make_talk_video(name):
         # output options:
         '-t', str(to - ss),
         '-filter_complex', ";".join(filters),
-        '-c:v', 'libx264',  # TODO: set CRF (video quality)
+        '-c:v', 'libx264',
+        '-crf', str(int(crf)),
+        '-preset', str(preset),
         '-map', '[v]',
         '-map', '[a]',
         final_video_filename
     ])
 
 
-def make_slide_video(name):
+def make_slide_video(name, crf=crf_visually_lossless, preset='slow'):
     """
     Use the previously created slides mux file to create a video with only the slides.
 
@@ -83,7 +90,9 @@ def make_slide_video(name):
         '-f', 'concat',
         '-i', slide_mux_filename,
         # output options:
-        '-c:v', 'libx264',  # TODO: set CRF (video quality)
+        '-c:v', 'libx264',
+        '-crf', str(int(crf)),
+        '-preset', str(preset),
         '-an',  # no audio
         '-r', (parameters['source_fps']),  # Match the camera frame rate
         slide_video_filename
