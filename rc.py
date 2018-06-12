@@ -61,19 +61,13 @@ def make_slide_video(name):
     """
     Use the previously created slides mux file to create a video with only the slides.
 
+    No scaling is done here, since using filter_complex with large mux files seems to make the memory blow up in ffmpeg.
+    Therefore, the PNG files in the mux file should already match that of the camera.
+
     :param name: The name of the talk as it appears in the spreadsheet.
 
     """
     parameters = get_parameters()
-
-    # For convenience, match the size and frame rate of the camera:
-    w = parameters['source_w']
-    h = parameters['source_h']
-    fps = parameters['source_fps']
-
-    filters = [
-        "[0]scale=w=-1:h={},pad=w={}:h={}:x=(out_w-in_w)/2,fps=fps={}[v]".format(h, w, h, fps),  # This assumes that video is wider than slides
-    ]
 
     slides = read_slide_timings(name)
     slide_mux_filename = os.path.join(parameters['output_folder'], '{}_slides.mux'.format(name))
@@ -89,10 +83,9 @@ def make_slide_video(name):
         '-f', 'concat',
         '-i', slide_mux_filename,
         # output options:
-        '-filter_complex', ";".join(filters),
         '-c:v', 'libx264',  # TODO: set CRF (video quality)
         '-an',  # no audio
-        '-map', '[v]',
+        '-r', (parameters['source_fps']),  # Match the camera frame rate
         slide_video_filename
     ])
 
