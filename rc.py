@@ -30,12 +30,10 @@ def make_talk_video(name, crf=crf_visually_lossless, preset='slow'):
     write_stream_timings_cmd_file(read_stream_timings(name), streamselect_filename)
     ss, to = write_camera_mux_file_for_talk(name, camera_mux_filename)
 
-    w = parameters['source_w']
-    h = parameters['source_h']
+    # This assumes that the slides are already at the same size as the camera (1080p)
+    # slides is input 0, camera is input 1
     filters = [
-        "[0]scale=w=-1:h={},pad=w={}:h={}:x=(out_w-in_w)/2[slides]".format(h, w, h),  # This assumes that video is wider than slides
-        "[1]null[camera]",
-        "[slides][camera]streamselect=inputs=2:map=0,sendcmd=f={},setdar[v]".format(streamselect_filename),
+        "[0][1]streamselect=inputs=2:map=0,sendcmd=f={},setdar[v]".format(streamselect_filename),
         "[1:a]anull[a]",  # Use audio from camera for now (TODO: use processed audio from DAW)
     ]
 
@@ -55,6 +53,7 @@ def make_talk_video(name, crf=crf_visually_lossless, preset='slow'):
         # output options:
         '-t', str(to - ss),
         '-filter_complex', ";".join(filters),
+        '-r', (parameters['source_fps']),  # Match the camera frame rate
         '-c:v', 'libx264',
         '-crf', str(int(crf)),
         '-preset', str(preset),
