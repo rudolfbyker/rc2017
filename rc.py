@@ -12,60 +12,97 @@ crf_visually_lossless = 18
 crf_lossless = 0
 
 
-def make_talk_video(name, crf=crf_visually_lossless, preset='slow'):
-    """
-    Make a video for the talk using the previously created slides mux file and streamselect command file.
+# def make_talk_video(name, crf=crf_visually_lossless, preset='slow'):
+#     """
+#     Make a video for the talk using the previously created slides mux file and streamselect command file.
+#
+#     :param name: The name of the talk as it appears in the spreadsheet.
+#
+#     """
+#     parameters = get_parameters()
+#
+#     streamselect_filename = os.path.join(parameters['output_folder'], '{}_streamselect.cmd'.format(name))
+#     slide_mux_filename = os.path.join(parameters['output_folder'], '{}_slides.mux'.format(name))
+#     final_video_filename = os.path.join(parameters['output_folder'], '{}.mp4'.format(name))
+#     camera_mux_filename = os.path.join(parameters['output_folder'], '{}_camera.mux'.format(name))
+#
+#     write_slide_timings_mux_file(read_slide_timings(name), slide_mux_filename)
+#     write_stream_timings_cmd_file(read_stream_timings(name), streamselect_filename)
+#     ss, to = write_camera_mux_file_for_talk(name, camera_mux_filename)
+#
+#     # This assumes that the slides are already at the same size as the camera (1080p)
+#     # slides is input 0, camera is input 1
+#     filters = [
+#         "[0][1]streamselect=inputs=2:map=0,sendcmd=f={},setdar[v]".format(streamselect_filename),
+#         "[1:a]anull[a]",  # Use audio from camera for now (TODO: use processed audio from DAW)
+#     ]
+#
+#     subprocess.check_call([
+#         'ffmpeg',
+#         # global options:
+#         '-y',  # overwrite
+#         # input stream 0 (slides)
+#         '-safe', '0',  # allow absolute paths
+#         '-f', 'concat',
+#         '-i', slide_mux_filename,
+#         # input stream 1 (camera)
+#         '-safe', '0',  # allow absolute paths
+#         '-f', 'concat',
+#         '-ss', str(ss / 1000.),
+#         '-i', camera_mux_filename,
+#         # output options:
+#         '-t', str(to - ss),
+#         '-filter_complex', ";".join(filters),
+#         '-r', (parameters['source_fps']),  # Match the camera frame rate
+#         '-c:v', 'libx264',
+#         '-crf', str(int(crf)),
+#         '-preset', str(preset),
+#         '-map', '[v]',
+#         '-map', '[a]',
+#         final_video_filename
+#     ])
 
-    :param name: The name of the talk as it appears in the spreadsheet.
+
+def concatenate_camera_clips_for_talk(name, crf=crf_visually_lossless, preset='slow'):
+    """
+    Create a camera mux file and use it to create a video with only the camera for a talk.
+
+    :param name: The name of the talk as it appears in the spreadsheet
+
+    :param crf:
+
+    :param preset:
 
     """
     parameters = get_parameters()
 
-    streamselect_filename = os.path.join(parameters['output_folder'], '{}_streamselect.cmd'.format(name))
-    slide_mux_filename = os.path.join(parameters['output_folder'], '{}_slides.mux'.format(name))
-    final_video_filename = os.path.join(parameters['output_folder'], '{}.mp4'.format(name))
     camera_mux_filename = os.path.join(parameters['output_folder'], '{}_camera.mux'.format(name))
-
-    write_slide_timings_mux_file(read_slide_timings(name), slide_mux_filename)
-    write_stream_timings_cmd_file(read_stream_timings(name), streamselect_filename)
     ss, to = write_camera_mux_file_for_talk(name, camera_mux_filename)
 
-    # This assumes that the slides are already at the same size as the camera (1080p)
-    # slides is input 0, camera is input 1
-    filters = [
-        "[0][1]streamselect=inputs=2:map=0,sendcmd=f={},setdar[v]".format(streamselect_filename),
-        "[1:a]anull[a]",  # Use audio from camera for now (TODO: use processed audio from DAW)
-    ]
+    camera_video_filename = os.path.join(parameters['output_folder'], '{}_camera.mp4'.format(name))
 
     subprocess.check_call([
         'ffmpeg',
         # global options:
         '-y',  # overwrite
-        # input stream 0 (slides)
+        # input stream 0 (camera)
         '-safe', '0',  # allow absolute paths
         '-f', 'concat',
-        '-i', slide_mux_filename,
-        # input stream 1 (camera)
-        '-safe', '0',  # allow absolute paths
-        '-f', 'concat',
-        '-ss', str(ss / 1000.),
         '-i', camera_mux_filename,
         # output options:
-        '-t', str(to - ss),
-        '-filter_complex', ";".join(filters),
+        '-ss', str(ss / 1000.),
+        '-to', str(to / 1000.),
         '-r', (parameters['source_fps']),  # Match the camera frame rate
         '-c:v', 'libx264',
         '-crf', str(int(crf)),
         '-preset', str(preset),
-        '-map', '[v]',
-        '-map', '[a]',
-        final_video_filename
+        camera_video_filename
     ])
 
 
-def make_slide_video(name, crf=crf_visually_lossless, preset='slow'):
+def make_slide_video_for_talk(name, crf=crf_visually_lossless, preset='slow'):
     """
-    Use the previously created slides mux file to create a video with only the slides.
+    Create a slides mux file and use it to create a video with only the slides.
 
     No scaling is done here, since using filter_complex with large mux files seems to make the memory blow up in ffmpeg.
     Therefore, the PNG files in the mux file should already match that of the camera.
