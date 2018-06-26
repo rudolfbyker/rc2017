@@ -71,10 +71,10 @@ def concatenate_camera_clips_for_talk(name, crf=crf_visually_lossless, preset='s
     parameters = get_parameters()
 
     camera_mux_filename = os.path.join(parameters['output_folder'], '{}_camera.mux'.format(name))
-    ss, to = write_camera_mux_file_for_talk(name, camera_mux_filename)
+    write_camera_mux_file_for_talk(name, camera_mux_filename)
 
     camera_video_filename = os.path.join(parameters['output_folder'], '{}_camera.mp4'.format(name))
-
+    ss, to = get_talk_ss_to(name)
     subprocess.check_call([
         'ffmpeg',
         # global options:
@@ -250,6 +250,23 @@ def media_length(filename):
         raise RuntimeError('Is mediainfo installed? On linux, try: sudo apt install mediainfo')
 
 
+def get_talk_ss_to(name):
+    talk_info = load_talk_info(name)
+    parameters = get_parameters()
+    input_files = [os.path.join(parameters['rc_base_folder'], talk_info['input_folder'], "MVI_{:04d}.MP4".format(i)) for i in range(
+        int(talk_info['start_video']),
+        int(talk_info['stop_video']) + 1
+    )]
+    ffmpeg_ss = float(talk_info['start_time_ms'])
+    ffmpeg_to = sum(media_length(f) for f in input_files[:-1]) + float(talk_info['stop_time_ms'])
+    return ffmpeg_ss, ffmpeg_to
+
+
+def get_talk_duration(name):
+    ss, to = get_talk_ss_to(name)
+    return to - ss
+
+
 def write_camera_mux_file_for_talk(name, output_filename):
     """
     Write mux files which tell ffmpeg to concatenate the source video files for the cameras used during talks.
@@ -258,22 +275,15 @@ def write_camera_mux_file_for_talk(name, output_filename):
 
     :param output_filename: The name of the output file
 
-    :return: The values of the -ss and -to parameters that should be passed to ffmpeg when the created mux file is used
-        as an input.
-
     """
     talk_info = load_talk_info(name)
     parameters = get_parameters()
-
     input_files = [os.path.join(parameters['rc_base_folder'], talk_info['input_folder'], "MVI_{:04d}.MP4".format(i)) for i in range(
         int(talk_info['start_video']),
         int(talk_info['stop_video']) + 1
     )]
-    ffmpeg_ss = float(talk_info['start_time_ms'])
-    ffmpeg_to = sum(media_length(f) for f in input_files[:-1]) + float(talk_info['stop_time_ms'])
     with open(output_filename, 'w') as mux_file:
         mux_file.write("\n".join("file '{}'".format(f) for f in input_files))
-    return ffmpeg_ss, ffmpeg_to
 
 
 def write_camera_mux_files_for_qa(name, cam1_mux_filename, cam2_mux_filename):
@@ -328,9 +338,12 @@ def extract_talk(name):
 
     """
     parameters = get_parameters()
+
     camera_mux_filename = os.path.join(parameters['output_dir'], '{}_camera.mux'.format(name))
-    ffmpeg_ss, ffmpeg_to = write_camera_mux_file_for_talk(name, camera_mux_filename)
+    write_camera_mux_file_for_talk(name, camera_mux_filename)
+
     video_filename = os.path.join(parameters['output_dir'], '{}.mp4'.format(name))
+    ffmpeg_ss, ffmpeg_to = get_talk_ss_to(name)
     subprocess.check_call([
         'ffmpeg',
         # global options:
