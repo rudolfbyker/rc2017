@@ -107,6 +107,13 @@ def make_slide_video_for_talk(name, crf=crf_visually_lossless, preset='slow'):
     parameters = get_parameters()
 
     slides = read_slide_timings(name)
+
+    # Let the last slide persist to the end of the video, plus one second, just to make sure it's long enough.
+    slides.append({
+        'time': timedelta(seconds=(get_talk_duration(name) / 1000.) + 1),
+        'filename': slides[-1]['filename']
+    })
+
     slide_mux_filename = os.path.join(parameters['output_folder'], '{}_slides.mux'.format(name))
     write_slide_timings_mux_file(slides, slide_mux_filename)
 
@@ -250,7 +257,16 @@ def media_length(filename):
         raise RuntimeError('Is mediainfo installed? On linux, try: sudo apt install mediainfo')
 
 
-def get_talk_ss_to(name):
+def get_talk_ss_to(name: str):
+    """
+    Get the duration to seek to (-ss option in ffmpeg) and the time at which the camera should shop (-to option in
+    ffmpeg) for the given talk.
+
+    :param name: The name of the talk as it appears in the spreadsheet.
+
+    :return float, float: The -ss and -to parameters for trimming the concatenated camera input, in milliseconds.
+
+    """
     talk_info = load_talk_info(name)
     parameters = get_parameters()
     input_files = [os.path.join(parameters['rc_base_folder'], talk_info['input_folder'], "MVI_{:04d}.MP4".format(i)) for i in range(
@@ -262,7 +278,15 @@ def get_talk_ss_to(name):
     return ffmpeg_ss, ffmpeg_to
 
 
-def get_talk_duration(name):
+def get_talk_duration(name: str):
+    """
+    Get the duration of the specified talk, in milliseconds
+
+    :param name: The name of the talk as it appears in the spreadsheet.
+
+    :return float: The duration of the talk, in ms
+
+    """
     ss, to = get_talk_ss_to(name)
     return to - ss
 
