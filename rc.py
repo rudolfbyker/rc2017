@@ -46,6 +46,7 @@ def make_talk_video(name, crf=crf_visually_lossless, preset='slow'):
         # input stream 1 (camera)
         '-i', camera_video_filename,
         # output options:
+        '-t', str(get_talk_duration(name) / 1000.),
         '-filter_complex', ";".join(filters),
         '-r', (parameters['source_fps']),  # Match the camera frame rate
         '-c:v', 'libx264',
@@ -147,8 +148,8 @@ def read_stream_timings(name):
     """
 
     stream_map = {
-        1: 'camera',
-        2: 'slides',
+        1: 'slides',
+        2: 'camera',
     }
     parameters = get_parameters()
     stream_timings_file = os.path.join(parameters['rc_base_folder'], 'timing', name, 'streams_timings--{}.txt'.format(name))
