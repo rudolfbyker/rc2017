@@ -34,6 +34,8 @@ def extract_camera_audio(name):
         output_wav_filename
     ])
 
+    return output_wav_filename
+
 
 def make_talk_video(name, crf=crf_visually_lossless, preset='slow'):
     """
