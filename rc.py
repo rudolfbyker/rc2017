@@ -270,7 +270,7 @@ def get_talk_ss_to(name: str):
     """
     talk_info = load_talk_info(name)
     parameters = get_parameters()
-    input_files = [os.path.join(parameters['rc_base_folder'], talk_info['input_folder'], "MVI_{:04d}.MP4".format(i)) for i in range(
+    input_files = [os.path.join(parameters['rc_base_folder'], talk_info['cam_input_folder'], "MVI_{:04d}.MP4".format(i)) for i in range(
         int(talk_info['start_video']),
         int(talk_info['stop_video']) + 1
     )]
@@ -303,7 +303,7 @@ def write_camera_mux_file_for_talk(name, output_filename):
     """
     talk_info = load_talk_info(name)
     parameters = get_parameters()
-    input_files = [os.path.join(parameters['rc_base_folder'], talk_info['input_folder'], "MVI_{:04d}.MP4".format(i)) for i in range(
+    input_files = [os.path.join(parameters['rc_base_folder'], talk_info['cam_input_folder'], "MVI_{:04d}.MP4".format(i)) for i in range(
         int(talk_info['start_video']),
         int(talk_info['stop_video']) + 1
     )]
