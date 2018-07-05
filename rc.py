@@ -3,6 +3,9 @@ import subprocess
 import os
 import functools
 from datetime import datetime, timedelta
+import rcsignal
+import numpy as np
+import matplotlib.pyplot as plt
 
 info_file = 'rc2017.ods'
 
@@ -12,7 +15,45 @@ crf_visually_lossless = 18
 crf_lossless = 0
 
 
-def extract_camera_audio(name):
+def extract_microphones_audio_for_talk(name):
+    parameters = get_parameters()
+    talk_info = load_talk_info('howe_force')
+
+    # Extract the audio from the camera video
+    camera_wav_filename = extract_camera_audio_for_talk(talk_info['name'])
+
+    # Calculate the delay where the audio from the camera matches the audio from the microphones
+    t_corr, corr = rcsignal.correlate_audio_files(
+        talk_info['original_audio_file'],
+        camera_wav_filename,
+        window_duration=.05
+    )
+    delay = t_corr[np.argmax(corr)]
+
+    # Plot the cross correlation just to make sure everything is sane.
+    plt.figure()
+    ax = plt.gca()
+    ax.plot(t_corr, corr)
+    ax.axvline(delay, c='g', linestyle=':')
+    plt.title("Calculated delay: {} s".format(delay))
+    plt.show()
+
+    # Now extract the audio
+    subprocess.check_call([
+        'ffmpeg',
+        # global options:
+        '-y',  # overwrite
+        # input stream 0
+        '-i', talk_info['original_audio_file'],
+        # output options:
+        '-ss', str(delay),
+        '-t', str(media_length(camera_wav_filename) / 1000.),
+        '-acodec', 'copy',
+        os.path.join(parameters['output_folder'], '{}_mics_audio.wav'.format(talk_info['name']))
+    ])
+
+
+def extract_camera_audio_for_talk(name):
     """
     Extract the audio from the concatenated camera clip
 
@@ -134,14 +175,8 @@ def make_slide_video_for_talk(name, crf=crf_visually_lossless, preset='slow'):
 
     slides = read_slide_timings(name)
 
-    # Let the last slide persist to the end of the video, plus one second, just to make sure it's long enough.
-    slides.append({
-        'time': timedelta(seconds=(get_talk_duration(name) / 1000.) + 1),
-        'filename': slides[-1]['filename']
-    })
-
     slide_mux_filename = os.path.join(parameters['output_folder'], '{}_slides.mux'.format(name))
-    write_slide_timings_mux_file(slides, slide_mux_filename)
+    write_slide_timings_mux_file(slides, slide_mux_filename, get_talk_duration(name))
 
     slide_video_filename = os.path.join(parameters['output_folder'], '{}_slides.mp4'.format(name))
     subprocess.check_call([
@@ -246,7 +281,7 @@ def write_stream_timings_cmd_file(stream_timings, output_filename):
             f.write("{} streamselect map {};\n".format(stream['time'], stream_map[stream['name']]))
 
 
-def write_slide_timings_mux_file(slide_timings, output_filename):
+def write_slide_timings_mux_file(slide_timings, output_filename, total_duration_ms):
     """
     Prepare a file for the ffmpeg concat demuxer.
     This file may be used as an input to ffmpeg to provide the slides for a talk.
@@ -257,13 +292,19 @@ def write_slide_timings_mux_file(slide_timings, output_filename):
 
     :param output_filename: The name of the output file.
 
+    :param total_duration_ms: The total duration of the video that will be created by this mux file. The last slide will
+        persist to this time.
+
     """
     with open(output_filename, 'w') as f:
-        previous_time = timedelta()
-        for slide in slide_timings:
-            f.write("file '{}'\n".format(slide['filename']))
-            f.write("duration {}\n".format(slide['time'] - previous_time))
-            previous_time = slide['time']
+        for i in range(len(slide_timings)):
+            f.write("file '{}'\n".format(slide_timings[i]['filename']))
+            start = slide_timings[i]['time']
+            try:
+                stop = slide_timings[i + 1]['time']
+            except IndexError:
+                stop = timedelta(seconds=total_duration_ms / 1000.)
+            f.write("duration {}\n".format(stop - start))
         # Due to an issue in ffmpeg, we have to repeat the last filename
         f.write("file '{}'\n".format(slide_timings[-1]['filename']))
 
