@@ -7,5 +7,6 @@
 # TODO:
 
 - More volume levelling.
+- Trim video to match audio. Make the rest slides?
 - Merge with video.
 
